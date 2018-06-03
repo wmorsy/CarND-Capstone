@@ -55,8 +55,6 @@ class DBWNode(object):
 
         # TODO: Create `Controller` object
         self.controller = Controller(vehicle_mass=vehicle_mass,
-                                     fuel_capacity=fuel_capacity,
-                                     brake_deadband=brake_deadband,
                                      decel_limit=decel_limit,
                                      accel_limit=accel_limit,
                                      wheel_radius=wheel_radius,
@@ -75,7 +73,9 @@ class DBWNode(object):
         self.dbw_enabled=None
         self.linear_vel=None
         self.angular_vel=None
-        self.throttle = self.steering = self.brake = 0
+        self.throttle = 0
+        self.steering = 0
+        self.brake    = 0
         
         self.loop()
 
