@@ -1,5 +1,5 @@
 from styx_msgs.msg import TrafficLight
-import os, cv2, glob
+import os, cv2, glob, time
 import numpy as np
 import tensorflow as tf
 from collections import Counter
@@ -54,6 +54,8 @@ class TLClassifier(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
 
         """
+        start = time.time()
+
         image_expanded = np.expand_dims(image, axis=0)
         with self.graph.as_default():
             (boxes, scores, classes, num) = self.sess.run(
@@ -65,7 +67,7 @@ class TLClassifier(object):
         classes = np.squeeze(classes).astype(np.int32)
 
         if self.draw_box == True:
-            print((boxes, scores, classes))
+            print((scores, classes))
 
         lights = []
         for i in range(boxes.shape[0]):
@@ -91,7 +93,9 @@ class TLClassifier(object):
                         display_str_list=([boxlabel]),
                         use_normalized_coordinates=True)
 
+
         if self.draw_box == True:
+            print('elapsed: ', time.time() - start)
             self.last_image = image
 
         lights.append(TrafficLight.UNKNOWN)
