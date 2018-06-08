@@ -3,8 +3,11 @@
 import rospy
 from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
-
+from std_msgs.msg import Int32
+from scipy.spatial import KDTree
 import math
+import numpy as np
+
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -28,25 +31,76 @@ class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater')
 
+        # Add subscribers for /current_pose, base_waypoints, traffic_waypoint
         rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
+        # TODO: Add a subscriber for /obstacle_waypoint below
 
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
-
+        # Add a publisher for /final_waypoints 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
+        # Add other member variables needed below
+        self.waypoints_2d = None
+        self.base_waypoints = None
+        self.pose = None
+        self.waypoint_tree = None
+        self.loop()
 
-        rospy.spin()
+
+    def loop(self):
+        '''
+        Ensures that the publishing frequency is 50Hz.
+        Closest waypoints are found by querying the KDTree.
+        '''
+        rate = rospy.Rate(50)
+        while not rospy.is_shutdown():
+            if self.pose and self.base_waypoints and self.waypoints_2d and self.waypoint_tree is not None:
+                closest_waypoint_idx = self.get_closest_waypoint_id()
+                self.publish_waypoints(closest_waypoint_idx)
+            rate.sleep()
+   
+    def get_closest_waypoint_id(self):
+        '''
+        Queries the waypoint tree and returns the index of the closest waypoint ahead of the car.
+        '''
+        x = self.pose.pose.position.x
+        y = self.pose.pose.position.y
+        closest_idx = self.waypoint_tree.query([x, y], 1)[1]
+        closest_coord = self.waypoints_2d[closest_idx]
+        # If closest is behind us, need to find the closest point ahead.
+        # Use dot product to determine if the closest is behind, if so return the next
+        prev_coord = self.waypoints_2d[closest_idx - 1]
+
+        #Hyperplane through closest_coords, to find closest waypoint that is AHEAD of the car
+        cl_vect = np.array(closest_coord)
+        prev_vect = np.array(prev_coord)
+        pos_vect = np.array([x, y])
+        val = np.dot(cl_vect-prev_vect, pos_vect-cl_vect)
+        if val > 0:
+            # Closest is behind, find the next
+            closest_idx = (closest_idx + 1) % len(self.waypoints_2d)
+        return closest_idx
+ 
+    def publish_waypoints(self, closest_idx):
+        lane = Lane()
+        lane.header = self.base_waypoints.header
+        lane.waypoints = self.base_waypoints.waypoints[closest_idx:closest_idx + LOOKAHEAD_WPS]
+        self.final_waypoints_pub.publish(lane)
 
     def pose_cb(self, msg):
-        # TODO: Implement
-        pass
+        self.pose = msg
 
     def waypoints_cb(self, waypoints):
-        # TODO: Implement
-        pass
+        '''
+        Callback for /base_waypoints
+        This sets the base_waypoints to the input waypoints and initializes a KDTree so that 
+        nearest neighbor queries can be answered efficiently.
+        '''
+        self.base_waypoints = waypoints
+        if not self.waypoints_2d:
+            self.waypoints_2d = [[waypoint.pose.pose.position.x, waypoint.pose.pose.position.y] for waypoint in waypoints.waypoints]
+            self.waypoint_tree = KDTree(self.waypoints_2d)
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -76,3 +130,4 @@ if __name__ == '__main__':
         WaypointUpdater()
     except rospy.ROSInterruptException:
         rospy.logerr('Could not start waypoint updater node.')
+
